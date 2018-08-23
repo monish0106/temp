@@ -28,6 +28,47 @@ def sample_C(batch_size, cond_dim=0, max_val=1, one_hot=False):
         return C
 
 # --- to do with training --- #
+class Batch():
+
+    def __init__(self):
+
+        self.num_epochs_completed = 0 
+        self.index_in_epoch = 0 
+    
+    def get_batch(self,batch_size):
+
+        start = self.index_in_epoch
+        self.index_in_epoch += batch_size 
+        
+        # For now skipping the last batch if the size of the batch is less than batch_size 
+        # Later will add a placeholder for batch_size so that we can have a dynamic batch_size at runtime 
+        
+        if self.index_in_epoch > self.num_examples:
+            
+            self.num_epochs_completed += 1 
+            
+            perm = np.arange(self.num_examples)
+            np.random.shuffle(perm)
+            
+            self.data = [self.data[i] for i in perm]
+            self.target = [self.target[i] for i in perm]
+            
+            start = 0
+            
+            self.index_in_epoch = batch_size
+            
+            assert batch_size <= self.num_examples
+            
+        end = self.index_in_epoch
+        
+        batch_x = []
+        batch_y = [] 
+        
+        for i in range(start,end):
+            batch_x.append(self.data[i])
+            batch_y.append(self.target[i])
+        
+        return [batch_x,batch_y]
 
 def train_epoch(epoch, samples, labels, sess, Z, X, CG, CD, CS,accuracy, D_loss, G_loss, D_solver, G_solver, 
                 batch_size, use_time, D_rounds, G_rounds, seq_length, 
@@ -35,103 +76,112 @@ def train_epoch(epoch, samples, labels, sess, Z, X, CG, CD, CS,accuracy, D_loss,
     """
     Train generator and discriminator for one epoch.
     """
-    for batch_idx in range(0, int(len(samples) / batch_size) - (D_rounds + (cond_dim > 0)*G_rounds), D_rounds + (cond_dim > 0)*G_rounds):
-        # update the discriminator
-        for d in range(D_rounds):
-            
-            X_mb, Y_mb = data_utils.get_batch(samples, batch_size, batch_idx + d, labels)
-            Z_mb = sample_Z(batch_size, seq_length, latent_dim, use_time)
-            if cond_dim > 0:
-                # CGAN
-                Y_mb = Y_mb.reshape(-1, cond_dim)
-#                 if one_hot:
-#                     # change all of the labels to a different one
-#                     offsets = np.random.choice(cond_dim-1, batch_size) + 1
-#                     new_labels = (np.argmax(Y_mb, axis=1) + offsets) % cond_dim
-#                     Y_wrong = np.zeros_like(Y_mb)
-#                     Y_wrong[np.arange(batch_size), new_labels] = 1
-#                 else:
-#                     # flip all of the bits (assuming binary...)
-# #                     Y_wrong = 1 - Y_mb
+    samples_object = Batch()
+    samples_object.data = samples
+    samples_object.target = labels
+    samples_object.num_examples = samples.shape[0] 
+
+    for d in range(D_rounds):
+        
+        X_mb, Y_mb = samples_object.get_batch(batch_size)
+        Z_mb = sample_Z(batch_size, seq_length, latent_dim, use_time)
+    
+        if cond_dim > 0:
+            # CGAN
+            Y_mb = np.array(Y_mb)
+
+            Y_mb = Y_mb.reshape(-1, cond_dim)
+            _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
+            acc = sess.run(accuracy,feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
+            # print(acc)       
+
+        else:
+            _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb})
                 
-                _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
-            
-            else:
-                _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb})
-            if WGAN_clip:
-                # clip the weights
-                _ = sess.run([clip_disc_weights])
-        # update the generator
-        for g in range(G_rounds):
-            if cond_dim > 0:
-                # note we are essentially throwing these X_mb away...
-                X_mb, Y_mb = data_utils.get_batch(samples, batch_size, batch_idx + D_rounds + g, labels)
-                Y_mb = Y_mb.reshape(-1,1) 
-                _ = sess.run(G_solver,
-                        feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb})
-            else:
-                _ = sess.run(G_solver,
-                        feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
-    # at the end, get the loss
+    # update the generator
+    for g in range(G_rounds):
+
+        if cond_dim > 0:
+            # note we are essentially throwing these X_mb away...
+            X_mb, Y_mb = samples_object.get_batch(batch_size)
+            # Y_mb = Y_mb.reshape(-1,1) 
+            _ = sess.run(G_solver,
+                    feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb})
+        else:
+            _ = sess.run(G_solver,
+                    feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+# at the end, get the loss
+
+    X_mb, Y_mb = samples_object.get_batch(batch_size)
+
     if cond_dim > 0:
         D_loss_curr, G_loss_curr, acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb, CD: Y_mb})
         print("monish",acc)
         D_loss_curr = np.mean(D_loss_curr)
         G_loss_curr = np.mean(G_loss_curr)
     else:
-        D_loss_curr, G_loss_curr = sess.run([D_loss, G_loss], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+        D_loss_curr, G_loss_curr,acc = sess.run([D_loss, G_loss,accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+        print("monish",acc)  
         D_loss_curr = np.mean(D_loss_curr)
         G_loss_curr = np.mean(G_loss_curr)
+
     return D_loss_curr, G_loss_curr
+ 
+    # for batch_idx in range(0, int(len(samples) / batch_size) ,1):
 
-def WGAN_loss(Z, X, WGAN_clip=False):
-   
-    raise NotImplementedError
-    G_sample = generator(Z, hidden_units_g, W_out_G, b_out_G, scale_out_G)
-    
-    D_real, D_logit_real, D_logit_real_final = discriminator(X, hidden_units_d, seq_length, batch_size)
-    
-    D_loss = tf.reduce_mean(D_fake) - tf.reduce_mean(D_real)
-    G_loss = -tf.reduce_mean(D_fake)
-
-    if not WGAN_clip:
-        # gradient penalty from improved WGAN code
-        # ... but it doesn't work in TF for RNNs, so let's skip it for now
-#        alpha = np.random.uniform(size=batch_size, low=0.0, high=1.0).reshape(batch_size, 1, 1)
-#        interpolates = alpha*X + ((1-alpha)*G_sample)
-#        pdb.set_trace()
-#        disc_interpolates, _ = discriminator(interpolates, reuse=True)
-#        gradients = tf.gradients(disc_interpolates, [interpolates])[0]
-#        slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
-#        gradient_penalty = tf.reduce_mean((slopes-1)**2)
-
-        # now for my own hack
-        # sample a random h
-        h = tf.random_normal(shape=X.shape, stddev=0.1)
-        D_offset, _ = discriminator(X + h, hidden_units_d)
-        gradient_penalty = tf.norm(D_offset - D_real)
-
-        KAPPA = 1.0
-        D_loss += KAPPA*gradient_penalty
+    #     for d in range(D_rounds):
+            
+    #         X_mb, Y_mb = data_utils.get_batch(samples, batch_size, batch_idx + d, labels)
+    #         Z_mb = sample_Z(batch_size, seq_length, latent_dim, use_time)
         
-        clip_disc_weights = None
-    else:
-        # weight clipping from original WGAN
-            # Build an op to do the weight clipping
-        clip_ops = []
-        for var in discriminator_vars:
-            clip_bounds = [-.01, .01]
-            clip_ops.append(
-                tf.assign(
-                    var,
-                    tf.clip_by_value(var, clip_bounds[0], clip_bounds[1])
-                )
-            )
-        clip_disc_weights = tf.group(*clip_ops)
+    #         if cond_dim > 0:
+    #             # CGAN
+    #             Y_mb = Y_mb.reshape(-1, cond_dim)
+    #             _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
+    #             acc = sess.run(accuracy,feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
+    #             print(acc)       
 
-    return G_loss, D_loss, clip_disc_weights
+    #         else:
+    #             _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb})
+            
+    #         if WGAN_clip:
+    #             # clip the weights
+    #             _ = sess.run([clip_disc_weights])
+
+    #         # _ , _ , acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb, Z: Z_mb, CG: Y_mb, CD: Y_mb})
+            
+    #     # update the generator
+    #     for g in range(G_rounds):
+
+    #         if cond_dim > 0:
+    #             # note we are essentially throwing these X_mb away...
+    #             X_mb, Y_mb = data_utils.get_batch(samples, batch_size, batch_idx + D_rounds + g, labels)
+    #             # Y_mb = Y_mb.reshape(-1,1) 
+    #             _ = sess.run(G_solver,
+    #                     feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb})
+    #         else:
+    #             _ = sess.run(G_solver,
+    #                     feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+    # # at the end, get the loss
+    
+    # X_mb, Y_mb = data_utils.get_batch(samples, batch_size, 0 , labels)
+    
+    # if cond_dim > 0:
+    #     D_loss_curr, G_loss_curr, acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb, CD: Y_mb})
+    #     print("monish",acc)
+    #     D_loss_curr = np.mean(D_loss_curr)
+    #     G_loss_curr = np.mean(G_loss_curr)
+    # else:
+    #     D_loss_curr, G_loss_curr,acc = sess.run([D_loss, G_loss,accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+    #     print("monish",acc)  
+    #     D_loss_curr = np.mean(D_loss_curr)
+    #     G_loss_curr = np.mean(G_loss_curr)
+
+    # return D_loss_curr, G_loss_curr
+
 
 def GAN_loss(Z, X, generator_settings, discriminator_settings,cond, CG, CD, CS, wrong_labels=False):
+    
     if cond:
         # C-GAN
         G_sample = generator(Z, **generator_settings, c=CG)
@@ -244,7 +294,7 @@ def generator(z, hidden_units_g, seq_length, batch_size, num_generated_features,
             inputs=inputs)
         rnn_outputs_2d = tf.reshape(rnn_outputs, [-1, hidden_units_g])
         logits_2d = tf.matmul(rnn_outputs_2d, W_out_G) + b_out_G
-        output_2d = tf.nn.tanh(logits_2d)
+        output_2d = tf.nn.sigmoid(logits_2d)
         output_3d = tf.reshape(output_2d, [-1, seq_length, num_generated_features])
     return output_3d
 

@@ -103,8 +103,10 @@ def get_data(data_type, data_options=None):
 
 
 def get_batch(samples, batch_size, batch_idx, labels=None):
+
     start_pos = batch_idx * batch_size
     end_pos = start_pos + batch_size
+    
     if labels is None:
         return samples[start_pos:end_pos], None
     else:
@@ -256,6 +258,7 @@ def mnist(randomize=False):
         # save to the npy
         np.save('./experiments/data/mnist_train.npy', train)
     # the first column is labels, kill them
+
     labels = train[:, 0]
     samples = train[:, 1:]
     if randomize:
@@ -264,6 +267,7 @@ def mnist(randomize=False):
         fixed_permutation = np.random.permutation(28*28)
         samples = train[:, fixed_permutation]
     samples = samples.reshape(-1, 28*28, 1)  
+    print(samples.shape)
     # add redundant additional signals
     return samples, labels
 

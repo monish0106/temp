@@ -28,7 +28,7 @@ def visualise_at_epoch(vis_sample, data, predict_labels, one_hot, epoch,
             labs = labels
             samps = vis_sample
         if multivariate_mnist:
-            save_mnist_plot_sample(samps.reshape(-1, seq_length**2, 1), epoch, identifier, n_samples=6, labels=labs)
+            save_mnist_plot_sample(samps.reshape(-1, seq_length, 1), epoch, identifier, n_samples=6, labels=labs)
         else:
             save_mnist_plot_sample(samps, epoch, identifier, n_samples=6, labels=labs)
     elif 'eICU' in data:
@@ -448,7 +448,7 @@ def save_mnist_plot_sample(samples, idx, identifier, n_samples, labels=None):
     else:
         label_titles = ['NA']*n_samples
     assert n_samples % 2 == 0
-    img_size = int(np.sqrt(samples.shape[1]))
+    # img_size = int(np.sqrt(samples.shape[1]))
 
     nrow = int(n_samples/2)
     ncol = 2
@@ -456,13 +456,14 @@ def save_mnist_plot_sample(samples, idx, identifier, n_samples, labels=None):
     for m in range(nrow):
         # first column
         sample = samples[m, :, 0]
-        axarr[m, 0].imshow(sample.reshape([img_size,img_size]), cmap='gray')
+        # axarr[m, 0].imshow(sample.reshape([img_size,img_size]), cmap='gray')
+        axarr[m,0].plot(sample)
         axarr[m, 0].set_title(str(label_titles[m]))
         # second column
         sample = samples[nrow + m, :, 0]
-        axarr[m, 1].imshow(sample.reshape([img_size,img_size]), cmap='gray')
+        axarr[m,1].plot(sample)
+        # axarr[m, 1].imshow(sample.reshape([img_size,img_size]), cmap='gray')
         axarr[m, 1].set_title(str(label_titles[m + nrow]))
-    fig.suptitle(idx)
     fig.suptitle(idx)
     fig.subplots_adjust(hspace = 0.15)
     fig.savefig("./experiments/plots/" + identifier + "_epoch" + str(idx).zfill(4) + ".png")
