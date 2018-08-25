@@ -469,6 +469,7 @@ def save_mnist_plot_sample(samples, idx, identifier, n_samples, labels=None):
     fig.savefig("./experiments/plots/" + identifier + "_epoch" + str(idx).zfill(4) + ".png")
     plt.clf()
     plt.close()
+    
     return
 
 def visualise_latent(Z, identifier):

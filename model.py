@@ -47,11 +47,11 @@ class Batch():
             
             self.num_epochs_completed += 1 
             
-            perm = np.arange(self.num_examples)
-            np.random.shuffle(perm)
+            # perm = np.arange(self.num_examples)
+            # np.random.shuffle(perm)
             
-            self.data = [self.data[i] for i in perm]
-            self.target = [self.target[i] for i in perm]
+            # self.data = [self.data[i] for i in perm]
+            # self.target = [self.target[i] for i in perm]
             
             start = 0
             

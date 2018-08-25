@@ -263,7 +263,7 @@ for epoch in range(num_epochs):
 	            resample_rate_in_min, multivariate_mnist, seq_length, labels=vis_C)
 
 	# compute mmd2 and, if available, prob density
-	if epoch % eval_freq == 0:
+	if False:
 	    ## how many samples to evaluate with?
 	    eval_Z = model.sample_Z(eval_size, seq_length, latent_dim, use_time)
 	    eval_C = model.sample_C(eval_size, cond_dim, max_val, one_hot)
