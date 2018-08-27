@@ -12,20 +12,27 @@ import mmd
 
 # --- to do with latent space --- #
 
-def sample_Z(batch_size, seq_length, latent_dim, use_time=False, use_noisy_time=False):
+def sample_Z(batch_size, seq_length, latent_dim):
     sample = np.float32(np.random.normal(size=[batch_size, seq_length, latent_dim]))
     return sample
 
-def sample_C(batch_size, cond_dim=0, max_val=1, one_hot=False):
+def sample_C(batch_size, cond_dim=0, one_hot=False):
     """
     return an array of integers (so far we only allow integer-valued
-    conditional values)
+    conditional values)s
     """
     if cond_dim == 0:
         return None
     else:
-        C = np.random.choice(max_val+1, size=(batch_size, cond_dim))
-        return C
+        if cond_dim == 1 : # only one class 
+            C = np.zeros(shape=(batch_size, cond_dim))
+
+        if one_hot == True:
+            assert cond_dim != 1
+            indices = np.random.choice(cond_dim, size = batch_size)
+            C = np.eye(cond_dim)[indices]
+
+        return C 
 
 # --- to do with training --- #
 class Batch():
@@ -67,30 +74,26 @@ class Batch():
         for i in range(start,end):
             batch_x.append(self.data[i])
             batch_y.append(self.target[i])
-        
+        batch_y = np.array(batch_y)
+
         return [batch_x,batch_y]
 
-def train_epoch(epoch, samples, labels, sess, Z, X, CG, CD, CS,accuracy, D_loss, G_loss, D_solver, G_solver, 
+def train_epoch(epoch, samples_object, X_mb1,Y_mb1, sess, Z, X, CG, CD, CS,accuracy, D_loss, G_loss, D_solver, G_solver, 
                 batch_size, use_time, D_rounds, G_rounds, seq_length, 
                 latent_dim, num_generated_features, cond_dim, max_val, WGAN_clip, one_hot):
     """
     Train generator and discriminator for one epoch.
     """
-    samples_object = Batch()
-    samples_object.data = samples
-    samples_object.target = labels
-    samples_object.num_examples = samples.shape[0] 
-
     for d in range(D_rounds):
         
         X_mb, Y_mb = samples_object.get_batch(batch_size)
-        Z_mb = sample_Z(batch_size, seq_length, latent_dim, use_time)
+        Z_mb = sample_Z(batch_size, seq_length, latent_dim)
     
         if cond_dim > 0:
             # CGAN
-            Y_mb = np.array(Y_mb)
+            # Y_mb = np.array(Y_mb)
 
-            Y_mb = Y_mb.reshape(-1, cond_dim)
+            # Y_mb = Y_mb.reshape(-1, cond_dim)
             _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
             acc = sess.run(accuracy,feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
             # print(acc)       
@@ -104,99 +107,40 @@ def train_epoch(epoch, samples, labels, sess, Z, X, CG, CD, CS,accuracy, D_loss,
         if cond_dim > 0:
             # note we are essentially throwing these X_mb away...
             X_mb, Y_mb = samples_object.get_batch(batch_size)
+            # Y_mb = np.array(Y_mb)
             # Y_mb = Y_mb.reshape(-1,1) 
             _ = sess.run(G_solver,
-                    feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb})
+                    feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim), CG: Y_mb})
         else:
             _ = sess.run(G_solver,
-                    feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+                    feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim)})
 # at the end, get the loss
 
-    X_mb, Y_mb = samples_object.get_batch(batch_size)
-
     if cond_dim > 0:
-        D_loss_curr, G_loss_curr, acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb, CD: Y_mb})
+        D_loss_curr, G_loss_curr, acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb1, Z: sample_Z(batch_size, seq_length, latent_dim), CG: Y_mb1, CD: Y_mb1})
         print("monish",acc)
         D_loss_curr = np.mean(D_loss_curr)
         G_loss_curr = np.mean(G_loss_curr)
     else:
-        D_loss_curr, G_loss_curr,acc = sess.run([D_loss, G_loss,accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
+        D_loss_curr, G_loss_curr,acc = sess.run([D_loss, G_loss,accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim)})
         print("monish",acc)  
         D_loss_curr = np.mean(D_loss_curr)
         G_loss_curr = np.mean(G_loss_curr)
 
     return D_loss_curr, G_loss_curr
  
-    # for batch_idx in range(0, int(len(samples) / batch_size) ,1):
-
-    #     for d in range(D_rounds):
-            
-    #         X_mb, Y_mb = data_utils.get_batch(samples, batch_size, batch_idx + d, labels)
-    #         Z_mb = sample_Z(batch_size, seq_length, latent_dim, use_time)
-        
-    #         if cond_dim > 0:
-    #             # CGAN
-    #             Y_mb = Y_mb.reshape(-1, cond_dim)
-    #             _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
-    #             acc = sess.run(accuracy,feed_dict={X: X_mb, Z: Z_mb, CD: Y_mb, CG: Y_mb})
-    #             print(acc)       
-
-    #         else:
-    #             _ = sess.run(D_solver, feed_dict={X: X_mb, Z: Z_mb})
-            
-    #         if WGAN_clip:
-    #             # clip the weights
-    #             _ = sess.run([clip_disc_weights])
-
-    #         # _ , _ , acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb, Z: Z_mb, CG: Y_mb, CD: Y_mb})
-            
-    #     # update the generator
-    #     for g in range(G_rounds):
-
-    #         if cond_dim > 0:
-    #             # note we are essentially throwing these X_mb away...
-    #             X_mb, Y_mb = data_utils.get_batch(samples, batch_size, batch_idx + D_rounds + g, labels)
-    #             # Y_mb = Y_mb.reshape(-1,1) 
-    #             _ = sess.run(G_solver,
-    #                     feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb})
-    #         else:
-    #             _ = sess.run(G_solver,
-    #                     feed_dict={Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
-    # # at the end, get the loss
-    
-    # X_mb, Y_mb = data_utils.get_batch(samples, batch_size, 0 , labels)
-    
-    # if cond_dim > 0:
-    #     D_loss_curr, G_loss_curr, acc = sess.run([D_loss, G_loss, accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time), CG: Y_mb, CD: Y_mb})
-    #     print("monish",acc)
-    #     D_loss_curr = np.mean(D_loss_curr)
-    #     G_loss_curr = np.mean(G_loss_curr)
-    # else:
-    #     D_loss_curr, G_loss_curr,acc = sess.run([D_loss, G_loss,accuracy], feed_dict={X: X_mb, Z: sample_Z(batch_size, seq_length, latent_dim, use_time=use_time)})
-    #     print("monish",acc)  
-    #     D_loss_curr = np.mean(D_loss_curr)
-    #     G_loss_curr = np.mean(G_loss_curr)
-
-    # return D_loss_curr, G_loss_curr
 
 
 def GAN_loss(Z, X, generator_settings, discriminator_settings,cond, CG, CD, CS, wrong_labels=False):
     
-    if cond:
-        # C-GAN
-        G_sample = generator(Z, **generator_settings, c=CG)
-        D_real, D_logit_real =  discriminator(X, **discriminator_settings, c=CD)
-        D_fake, D_logit_fake = discriminator(G_sample, reuse=True, **discriminator_settings, c=CG)
-        
-        if wrong_labels:
-            # the discriminator must distinguish between real data with fake labels and real data with real labels, too
-            D_wrong, D_logit_wrong = discriminator(X, reuse=True, **discriminator_settings, c=CS)
-    else:
-        # normal GAN
-        G_sample = generator(Z, **generator_settings)
-        D_real, D_logit_real  = discriminator(X, **discriminator_settings)
-        D_fake, D_logit_fake = discriminator(G_sample, reuse=True, **discriminator_settings)
+    G_sample = generator(Z, **generator_settings, c=CG)
+    D_real, D_logit_real =  discriminator(X, **discriminator_settings, c=CD)
+    D_fake, D_logit_fake = discriminator(G_sample, reuse=True, **discriminator_settings, c=CG)
     
+    if wrong_labels:
+        # the discriminator must distinguish between real data with fake labels and real data with real labels, too
+        D_wrong, D_logit_wrong = discriminator(X, reuse=True, **discriminator_settings, c=CS)
+
     bsize = generator_settings['batch_size']
     seq_length = generator_settings['seq_length']
  
@@ -208,7 +152,6 @@ def GAN_loss(Z, X, generator_settings, discriminator_settings,cond, CG, CD, CS, 
 
     accuracy = (count_real + count_fake) / (2* bsize)
     
-    print(D_logit_real)
     D_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_real, labels=tf.ones_like(D_logit_real)), 1)
     D_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.zeros_like(D_logit_fake)), 1)
    
@@ -217,13 +160,11 @@ def GAN_loss(Z, X, generator_settings, discriminator_settings,cond, CG, CD, CS, 
     if cond and wrong_labels:
         D_loss = D_loss + D_loss_wrong
 
-    #G_loss = tf.reduce_mean(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.ones_like(D_logit_fake)), axis=1))
     G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.ones_like(D_logit_fake)), 1)
     
     return D_loss, G_loss, accuracy
 
-def GAN_solvers(D_loss, G_loss, learning_rate, batch_size, total_examples, 
-        l2norm_bound, batches_per_lot, sigma, dp=False):
+def GAN_solvers(D_loss, G_loss, learning_rate, batch_size):
     """
     Optimizers
     """
@@ -273,6 +214,7 @@ def generator(z, hidden_units_g, seq_length, batch_size, num_generated_features,
         W_out_G = tf.get_variable(name='W_out_G', shape=[hidden_units_g, num_generated_features], initializer=W_out_G_initializer)
         b_out_G = tf.get_variable(name='b_out_G', shape=num_generated_features, initializer=b_out_G_initializer)
         scale_out_G = tf.get_variable(name='scale_out_G', shape=1, initializer=scale_out_G_initializer, trainable=learn_scale)
+        
         if cond_dim > 0:
             # CGAN!
             assert not c is None
@@ -294,8 +236,9 @@ def generator(z, hidden_units_g, seq_length, batch_size, num_generated_features,
             inputs=inputs)
         rnn_outputs_2d = tf.reshape(rnn_outputs, [-1, hidden_units_g])
         logits_2d = tf.matmul(rnn_outputs_2d, W_out_G) + b_out_G
-        output_2d = tf.nn.sigmoid(logits_2d)
+        output_2d = tf.nn.tanh(logits_2d)  # ACTIVATION FOR GENERATOR 
         output_3d = tf.reshape(output_2d, [-1, seq_length, num_generated_features])
+    
     return output_3d
 
 def discriminator(x, hidden_units_d, seq_length, batch_size, reuse=False, 
@@ -328,7 +271,7 @@ def discriminator(x, hidden_units_d, seq_length, batch_size, reuse=False,
             dtype=tf.float32,
             inputs=inputs)
         logits = tf.einsum('ijk,km', rnn_outputs, W_out_D) + b_out_D
-        output = tf.nn.sigmoid(logits)
+        output = tf.nn.sigmoid(logits) # ACTIVATION FOR DISCRIMINATOR 
     return output, logits
 
 # --- to do with saving/loading --- #

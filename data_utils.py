@@ -273,10 +273,11 @@ def mnist(randomize=False):
 
 
 
-def sine_wave(seq_length=30, num_samples=28*5*100, num_signals=1,
+def sine_wave(seq_length=60, num_samples=180, num_signals=1,
         freq_low=1, freq_high=5, amplitude_low = 0.1, amplitude_high=0.9, **kwargs):
     ix = np.arange(seq_length) + 1
     samples = []
+    labels = []
     for i in range(num_samples):
         signals = []
         for i in range(num_signals):
@@ -286,9 +287,10 @@ def sine_wave(seq_length=30, num_samples=28*5*100, num_signals=1,
             offset = np.random.uniform(low=-np.pi, high=np.pi)
             signals.append(A*np.sin(2*np.pi*f*ix/float(seq_length) + offset))
         samples.append(np.array(signals).T)
+        labels.append(0)
     # the shape of the samples is num_samples x seq_length x num_signals
     samples = np.array(samples)
-    return samples
+    return samples,labels
 
 def periodic_kernel(T, f=1.45/30, gamma=7.0, A=0.1):
     """

@@ -9,6 +9,7 @@ import data_utils
 import plotting
 import model
 import utils
+from model import Batch 
 
 import os
 import time 
@@ -23,149 +24,70 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-num_examples = 400 
+#####################################################
 
-class Data(): 
-    
-    def __init__(self):
-    
-        self.num_epochs_completed = 0 
-        self.index_in_epoch = 0 
-    
-    def next_batch(self,batch_size):
-        
-        start = self.index_in_epoch
-        self.index_in_epoch += batch_size 
-        
-        # For now skipping the last batch if the size of the batch is less than batch_size 
-        # Later will add a placeholder for batch_size so that we can have a dynamic batch_size at runtime 
-        
-        if self.index_in_epoch > self.num_examples:
-            
-            self.num_epochs_completed += 1 
-            
-            perm = np.arange(self.num_examples)
-            np.random.shuffle(perm)
-            
-            self.data = [self.data[i] for i in perm]
-            self.target = [self.target[i] for i in perm]
-            
-            start = 0
-            
-            self.index_in_epoch = batch_size
-            
-            assert batch_size <= self.num_examples
-            
-        end = self.index_in_epoch
-        
-        batch_x = []
-        batch_y = [] 
-        
-        for i in range(start,end):
-            batch_x.append(self.data[i][0])
-            batch_y.append(self.target[i])
-        
-        return [batch_x,batch_y]
+# 						PROLOG						# 
 
-
-tic = time.time() 
-
-#Reading the dataset
-curr_dir = './dataset/2'
-files = os.listdir(curr_dir)
-# print(files)
-n_files = len(files)
-
-# logging.debug('Reading the files : ',n_files,'\nTime :',time.time() - tic) 
-
-data = [] 
-
-for i in range(n_files):
-    data.append(utilities.Utilities.read_dataset_one(curr_dir,files[i],num_examples))
-    
-# Train Test split 
-random.shuffle(data)
-
-# print(data[0][0])
-
-# plt.plot(data[0][0])
-# plt.show()
-
-n_train = int(0.8 * n_files) 
-# plt.savefig('foo.png')
-train_data = data[0:n_train]
-test_data = data[n_train:]
-
-train_object = Data()
-
-# Changing all Ys to one hot vectors 
-all_y = [] 
-for i in range(len(train_data)):
-	all_y.append(train_data[i][1])
-# print(all_y)
-values = np.array(all_y)
-label_encoder = LabelEncoder()
-integer_encoded = label_encoder.fit_transform(values)
-onehot_encoder = OneHotEncoder(sparse=False)
-integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
-onehot_encoded = onehot_encoder.fit_transform(np.array(integer_encoded))
-
-test_y = [] 
-for i in range(len(test_data)):
-	test_y.append(test_data[i][1])
-
-test_values = np.array(test_y)
-integer_test = label_encoder.transform(test_values)
-integer_test = integer_test.reshape(len(integer_test), 1)
-onehot_test = onehot_encoder.transform(np.array(integer_test))
-
-# placing X and Y values in the object of class Data 
-train_object.data = train_data
-train_object.target = onehot_encoded
-train_object.num_examples = len(train_data)
-
-# print(train_object.num_examples)
-# print(onehot_encoded)
-test_object = Data()
-test_object.data = test_data
-test_object.target = onehot_test
-test_object.num_examples = len(test_data)
-
-X_train, X_vali, y_train, y_vali = train_test_split(train_object.data, train_object.target, test_size=0.33, random_state=42)
+##################################################### 
 
 
 identifier = 'mnistfull'
-
 settings = utils.load_settings_from_file(identifier)
-
-# samples, pdf, labels = data_utils.get_samples_and_labels(settings)
-
-# print(train_object.data)
-# print(X_train[0][0])
-samples = {}
-samples['train'] = np.array([np.array(xi[0]) for xi in X_train])
-samples['train'] = np.expand_dims(samples['train'], axis=2)
-samples['vali'] = np.array([np.array(xi[0]) for xi in X_vali])
-samples['vali'] = np.expand_dims(samples['vali'], axis=2)
-
-samples['test'] = np.array([np.array(xi[0]) for xi in test_object.data])
-samples['test'] = np.expand_dims(samples['test'], axis=2)
-
+locals().update(settings)
 pdf = None 
+vis_freq = 10
+eval_freq = 1
+
+######################################################
+
+#				DATASET DEPENDENT					 #
+
+###################################################### 
+
+
+data, targets = data_utils.sine_wave()
+X_train, X_vali, y_train, y_vali = train_test_split(data, targets, test_size=0.2, random_state=42)
+
+samples = {}
+samples['train'] = X_train
+samples['vali'] = X_vali
 
 labels = {}
+y_train = np.array(y_train)
+y_train = y_train.reshape(-1,1)
+y_vali = np.array(y_vali)
+y_vali = y_vali.reshape(-1,1)
+
 labels['train'] = y_train
-labels['test'] = test_object.target
 labels['vali'] = y_vali
 
-locals().update(settings)
-# json.dump(settings, open('./experiments/settings/' + identifier + '.txt', 'w'), indent=0)
 
-data_path = './experiments/data/' + identifier + '.data.npy'
-np.save(data_path, {'samples': samples, 'pdf': pdf, 'labels': labels})
-print('Saved training data to', data_path)
+# REQUIRED 
+# SHAPE OF SAMPLES (NUMBER OF SAMPLES, SEQUENCE LENGTH, FEATURES )
+# SHAPE OF LABELS  (NUMBER OF SAMPLES, 1 ) if one_hot = True 
+# SHAPE OF LABELS (NUMBER OF SAMPLES, COND_DIM ) IF ONE_HOT = FALSE
 
-# --- build model --- #
+assert len(samples['train'].shape) == 3 
+assert len(samples['vali'].shape) == 3 
+assert samples['train'].shape[1] == seq_length 
+assert samples['vali'].shape[1] == seq_length
+
+
+if one_hot == False :
+	assert labels['train'].shape[1] == 1 
+	assert labels['vali'].shape[1] == 1
+else: 
+	assert labels['train'].shape[1] == cond_dim 
+	assert labels['vali'].shape[1] == cond_dim 	
+
+
+# FURTHER PART IS INDEPENDENT OF THE DATASET 
+
+##################################################################################
+
+# 			NO NEED TO CHANGE THE BELOW PART 									 # 
+
+##################################################################################
 
 Z, X, CG, CD, CS = model.create_placeholders(batch_size, seq_length, latent_dim, 
 									num_signals, cond_dim)
@@ -177,20 +99,21 @@ generator_vars = ['hidden_units_g', 'seq_length', 'batch_size',
 generator_settings = dict((k, settings[k]) for k in generator_vars)
 
 CGAN = (cond_dim > 0)
-print(CGAN)
 D_loss, G_loss, accuracy = model.GAN_loss(Z, X, generator_settings, discriminator_settings, CGAN, CG, CD, CS, wrong_labels=wrong_labels)
-D_solver, G_solver = model.GAN_solvers(D_loss, G_loss, learning_rate, batch_size, total_examples=samples['train'].shape[0], l2norm_bound=0, batches_per_lot=0, sigma=0, dp=False)
+D_solver, G_solver = model.GAN_solvers(D_loss, G_loss, learning_rate, batch_size)
 G_sample = model.generator(Z, **generator_settings, reuse=True, c=CG)
 
-# print("Train Samples : ", samples['train'].shape)
-# print("Validation Samples : ", samples['vali'].shape)
+print("Train Samples : ", samples['train'].shape)
+print("Validation Samples : ", samples['vali'].shape)
 # print("Test Samples : ", samples['test'].shape)
 # print("Train Labels :", labels['train'])
-# # --- evaluation --- #
 
-# # # frequency to do visualisations
-vis_freq = 10
-eval_freq = 1
+################################################################################
+
+# 						VISUALIZATION AND EVALUATION PART 					   # 
+
+################################################################################
+
 
 # # # get heuristic bandwidth for mmd kernel from evaluation samples
 heuristic_sigma_training = median_pairwise_distance(samples['vali'])
@@ -212,14 +135,15 @@ with tf.variable_scope("SIGMA_optimizer"):
 	#sigma_solver = tf.train.AdamOptimizer().minimize(-that, var_list=[sigma])
 	#sigma_solver = tf.train.AdagradOptimizer(learning_rate=0.1).minimize(-that, var_list=[sigma])
 sigma_opt_iter = 2000
-sigma_opt_thresh = 0.001
+sigma_opt_thresh = 0.05
 sigma_opt_vars = [var for var in tf.global_variables() if 'SIGMA_optimizer' in var.name]
 
 sess = tf.Session(config=tf.ConfigProto())
 sess.run(tf.global_variables_initializer())
 
-vis_Z = model.sample_Z(batch_size, seq_length, latent_dim, use_time)
-vis_C = model.sample_C(batch_size, cond_dim, max_val, one_hot)
+vis_Z = model.sample_Z(batch_size, seq_length, latent_dim)
+vis_C = model.sample_C(batch_size, cond_dim, one_hot)
+
 # vis_C[:1] = np.arange(cond_dim)
 if cond_dim > 0:
 	vis_sample = sess.run(G_sample, feed_dict={Z: vis_Z, CG: vis_C})
@@ -228,11 +152,12 @@ else:
 
 vis_real_indices = np.random.choice(len(samples['vali']), size=6)
 vis_real = np.float32(samples['vali'][vis_real_indices, :, :])
+
 vis_real_labels = labels['vali'][vis_real_indices]
 
 samps = vis_real
 labs = vis_real_labels 
-
+print(vis_real_labels)
 plotting.save_mnist_plot_sample(samps.reshape(-1, seq_length, 1), 0, identifier + '_real', n_samples=6, labels=labs)
 
 trace = open('./experiments/traces/' + identifier + '.trace.txt', 'w')
@@ -248,9 +173,19 @@ t0 = time.time()
 best_epoch = 0
 print('epoch\ttime\tD_loss\tG_loss\tmmd2\t')
 
+samples_object = Batch()
+samples_object.data = samples['train']
+samples_object.target = labels['train']
+samples_object.num_examples = samples['train'].shape[0] 
+
+X_mb_eval, Y_mb_eval = samples_object.get_batch(batch_size)
+# Y_mb_eval = Y_mb_eval.reshape(-1,1)
+
 for epoch in range(num_epochs):
+
 	
-	D_loss_curr, G_loss_curr = model.train_epoch(epoch, samples['train'], labels['train'],sess, Z, X, CG, CD, CS,accuracy, D_loss, G_loss, D_solver, G_solver,**train_settings)
+	D_loss_curr, G_loss_curr = model.train_epoch(epoch, samples_object, X_mb_eval
+		,Y_mb_eval ,sess, Z, X, CG, CD, CS,accuracy, D_loss, G_loss, D_solver, G_solver,**train_settings)
 	# -- eval -- #
 	# visualise plots of generated samples, with/without labels
 	if epoch % vis_freq == 0:
@@ -258,15 +193,24 @@ for epoch in range(num_epochs):
 	        vis_sample = sess.run(G_sample, feed_dict={Z: vis_Z, CG: vis_C})
 	    else:
 	        vis_sample = sess.run(G_sample, feed_dict={Z: vis_Z})
+	    x_axis = np.arange(seq_length)
+
+	    vis = vis_sample[0,:,0]
+	    np.savetxt("foo.csv",vis, delimiter=",")
+
+	    # print(vis_sample.shape)
+	    # plt.plot(x_axis,vis_sample[0,:,0])
+	    # plt.show() 
+
 	    plotting.visualise_at_epoch(vis_sample, data, 
 	            predict_labels, one_hot, epoch, identifier, num_epochs,
 	            resample_rate_in_min, multivariate_mnist, seq_length, labels=vis_C)
 
 	# compute mmd2 and, if available, prob density
-	if False:
+	if False :
 	    ## how many samples to evaluate with?
-	    eval_Z = model.sample_Z(eval_size, seq_length, latent_dim, use_time)
-	    eval_C = model.sample_C(eval_size, cond_dim, max_val, one_hot)
+	    eval_Z = model.sample_Z(eval_size, seq_length, latent_dim)
+	    eval_C = model.sample_C(eval_size, cond_dim, one_hot)
 	    eval_sample = np.empty(shape=(eval_size, seq_length, num_signals))
 
 	    for i in range(batch_multiplier):

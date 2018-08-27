@@ -61,7 +61,7 @@ class Utilities:
 #         plt.show()
         
         del data[0]
-        data = data.iloc[:,2]
+        data = data.iloc[:,3]
         # normalized_data=(data-data.mean())/data.std()
         # print(min(data),max(data))
         data = data[0:num_examples]
